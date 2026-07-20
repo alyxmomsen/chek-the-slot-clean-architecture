@@ -1,17 +1,20 @@
 import { Slot } from '../../core/entities/Slot';
 import { ISlotApiService } from '../../core/ports/ISlotApiService';
 import { ILogger } from '../../core/ports/ILogger';
+import { z } from 'zod';
 
-interface ApiLocation {
-    location_id: number;
-    name: string;
-    slots: Record<string, Record<string, boolean>>;
-}
+const ApiSlotSchema = z.record(z.string(), z.record(z.string(), z.boolean()));
 
-interface ApiResponse {
-    code: string;
-    data: ApiLocation[];
-}
+const ApiLocationSchema = z.object({
+    location_id: z.number(),
+    name: z.string(),
+    slots: ApiSlotSchema,
+});
+
+const ApiResponseSchema = z.object({
+    code: z.literal('SUCCESS'),
+    data: z.array(ApiLocationSchema),
+});
 
 export class MosApiService implements ISlotApiService {
     private readonly baseUrl = 'https://www.mos.ru/api/streetfest/v2/locations';
@@ -39,11 +42,8 @@ export class MosApiService implements ISlotApiService {
             throw new Error(`API returned status ${response.status}`);
         }
 
-        const json: ApiResponse = await response.json();
-
-        if (json.code !== 'SUCCESS' || !Array.isArray(json.data)) {
-            throw new Error('Invalid API response structure');
-        }
+        const raw = await response.json();
+        const json = ApiResponseSchema.parse(raw);
 
         const result = new Map<number, Slot[]>();
 
