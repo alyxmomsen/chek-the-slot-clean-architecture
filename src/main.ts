@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { config } from './config/env';
-import { ConsoleLogger } from './adapters/services/ConsoleLogger';
+import { WinstonLogger } from './adapters/services/WinstonLogger';
 import { MosApiService } from './adapters/services/MosApiService';
 import { FileSnapshotRepository } from './adapters/repositories/FileSnapshotRepository';
 import { TelegramNotificationService } from './adapters/services/TelegramNotificationService';
@@ -16,7 +16,7 @@ import { ReportController } from './adapters/controllers/ReportController';
 import { HealthController } from './adapters/controllers/HealthController';
 
 // 1. Логгер
-const logger = new ConsoleLogger();
+const logger = new WinstonLogger();
 
 // 2. Конфигурация локаций
 const locations: MonitoredLocation[] = [
