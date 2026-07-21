@@ -156,8 +156,9 @@ export class MonitorSlotsUseCase {
       }
 
       const elapsed = Date.now() - cycleStart;
+      const jitter = Math.floor(Math.random() * 200);
       const sleepTime = Math.max(0, this.config.pollIntervalMs - elapsed);
-      await new Promise(r => setTimeout(r, sleepTime));
+      await new Promise(r => setTimeout(r, sleepTime + jitter));
     }
 
     this.logger.info('MonitorSlotsUseCase finished');
