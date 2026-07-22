@@ -44,14 +44,11 @@ export class MonitorSlotsUseCase {
     this.logger.info('MonitorSlotsUseCase started', {
       locations: this.config.locations.map(l => l.name),
       pollIntervalMs: this.config.pollIntervalMs,
-      maxRunHours: this.config.maxRunHours,
     });
 
-    const startTime = Date.now();
-    const maxDurationMs = this.config.maxRunHours * 60 * 60 * 1000;
     let iterationId = 0;
 
-    while (Date.now() - startTime < maxDurationMs) {
+    while (true) {
       iterationId++;
       const cycleStart = Date.now();
 
@@ -160,7 +157,5 @@ export class MonitorSlotsUseCase {
       const sleepTime = Math.max(0, this.config.pollIntervalMs - elapsed);
       await new Promise(r => setTimeout(r, sleepTime + jitter));
     }
-
-    this.logger.info('MonitorSlotsUseCase finished');
   }
 }
