@@ -2,18 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { config } from './config/env';
-import { WinstonLogger } from './adapters/services/WinstonLogger';
-import { MosApiService } from './adapters/services/MosApiService';
-import { FileSnapshotRepository } from './adapters/repositories/FileSnapshotRepository';
-import { TelegramNotificationService } from './adapters/services/TelegramNotificationService';
-import { EventBus } from './adapters/services/EventBus';
-import {
-    MonitorSlotsUseCase,
-    MonitorConfig,
-    MonitoredLocation,
-} from './core/use-cases/MonitorSlotsUseCase';
-import { ReportController } from './adapters/controllers/ReportController';
-import { HealthController } from './adapters/controllers/HealthController';
+import { WinstonLogger } from './infrastructure/services/WinstonLogger';
+import { MosApiService } from './infrastructure/services/MosApiService';
+import { FileSnapshotRepository } from './infrastructure/repositories/FileSnapshotRepository';
+import { TelegramNotificationService } from './infrastructure/services/TelegramNotificationService';
+import { EventBus } from './infrastructure/services/EventBus';
+import { MonitorSlotsUseCase, MonitorConfig, MonitoredLocation } from './application/use-cases/MonitorSlotsUseCase';
+import { ReportController } from './infrastructure/controllers/ReportController';
+import { HealthController } from './infrastructure/controllers/HealthController';
 
 // 1. Логгер
 const logger = new WinstonLogger();

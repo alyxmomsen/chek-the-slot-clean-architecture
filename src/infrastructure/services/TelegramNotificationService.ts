@@ -1,8 +1,8 @@
 import { Telegraf } from 'telegraf';
-import { Slot } from '../../core/entities/Slot';
-import { SlotChange } from '../../core/entities/SlotChange';
-import { INotificationService } from '../../core/ports/INotificationService';
-import { ILogger } from '../../core/ports/ILogger';
+import { Slot } from '../../domain/entities/Slot';
+import { SlotChange } from '../../domain/entities/SlotChange';
+import { INotificationService } from '../../application/ports/INotificationService';
+import { ILogger } from '../../application/ports/ILogger';
 
 export class TelegramNotificationService implements INotificationService {
     private readonly bot: Telegraf;

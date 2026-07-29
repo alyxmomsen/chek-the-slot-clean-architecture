@@ -1,4 +1,4 @@
-import { Slot } from '../entities/Slot';
+import { Slot } from '../../domain/entities/Slot';
 
 export class GenerateSummaryUseCase {
     execute(slots: Slot[]): {

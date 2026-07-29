@@ -1,8 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { Snapshot } from '../../core/entities/Snapshot';
-import { ISnapshotRepository } from '../../core/ports/ISnapshotRepository';
-import { ILogger } from '../../core/ports/ILogger';
+import { Snapshot } from '../../domain/entities/Snapshot';
+import { ISnapshotRepository } from '../../application/ports/ISnapshotRepository';
+import { ILogger } from '../../application/ports/ILogger';
 
 export class FileSnapshotRepository implements ISnapshotRepository {
     constructor(

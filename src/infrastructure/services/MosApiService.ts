@@ -1,6 +1,6 @@
-import { Slot } from '../../core/entities/Slot';
-import { ISlotApiService } from '../../core/ports/ISlotApiService';
-import { ILogger } from '../../core/ports/ILogger';
+import { Slot } from '../../domain/entities/Slot';
+import { ISlotApiService } from '../../application/ports/ISlotApiService';
+import { ILogger } from '../../application/ports/ILogger';
 import { z } from 'zod';
 
 const ApiSlotSchema = z.record(z.string(), z.record(z.string(), z.boolean()));
