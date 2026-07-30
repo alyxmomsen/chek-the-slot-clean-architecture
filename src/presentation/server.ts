@@ -8,127 +8,196 @@ import { MonitoredLocation } from '../application/use-cases/MonitorSlotsUseCase'
 import { ReportController } from './controllers/ReportController';
 import { HealthController } from './controllers/HealthController';
 import { config } from '../config/env';
+import { MonitorSlotsUseCase } from '../application/use-cases/MonitorSlotsUseCase';
+import { ConfigRepository } from '../infrastructure/repositories/ConfigRepository';
+import { z } from 'zod';
 
 export interface ServerDependencies {
-  logger: ILogger;
-  eventBus: IEventBus;
-  snapshotRepo: ISnapshotRepository;
-  locations: MonitoredLocation[];
+    logger: ILogger;
+    eventBus: IEventBus;
+    snapshotRepo: ISnapshotRepository;
+    locations: MonitoredLocation[];
+    monitorUseCase: MonitorSlotsUseCase;
+    configRepository: ConfigRepository;
 }
 
 export function createServer(deps: ServerDependencies) {
-  const { logger, eventBus, snapshotRepo, locations } = deps;
+    const { logger, eventBus, snapshotRepo, locations } = deps;
 
-  const app = express();
-  app.use(cors({ origin: config.corsOrigin }));
-  app.use(express.json());
+    const app = express();
+    app.use(cors({ origin: config.corsOrigin }));
+    app.use(express.json());
 
-  const reportController = new ReportController(logger);
-  const healthController = new HealthController();
+    const reportController = new ReportController(logger);
+    const healthController = new HealthController();
 
-  // Health check
-  app.get('/health', (req, res) => healthController.handle(req, res));
+    // Health check
+    app.get('/health', (req, res) => healthController.handle(req, res));
 
-  // Приём отчётов от подчинённых
-  app.post('/report', (req, res) => reportController.handle(req, res));
+    // Приём отчётов от подчинённых
+    app.post('/report', (req, res) => reportController.handle(req, res));
 
-  // Список всех локаций
-  app.get('/locations', (_req, res) => {
-    res.json({
-      ok: true,
-      locations: locations.map(loc => ({ id: loc.id, name: loc.name })),
+    // Список всех локаций
+    app.get('/locations', (_req, res) => {
+        res.json({
+            ok: true,
+            locations: locations.map((loc) => ({ id: loc.id, name: loc.name })),
+        });
     });
-  });
 
-  // Статус всех площадок (REST)
-  app.get('/status', async (_req, res) => {
-    try {
-      const result: Record<string, unknown> = {};
-      for (const loc of locations) {
-        const snapshot = await snapshotRepo.load(loc.name);
-        result[loc.name] = snapshot ? {
-          checkedAt: snapshot.checkedAt,
-          slots: snapshot.slots,
-        } : { checkedAt: null, slots: [] };
-      }
-      res.json({ ok: true, locations: result });
-    } catch (err) {
-      logger.error('Failed to get status', err instanceof Error ? err : new Error(String(err)));
-      res.status(500).json({ ok: false, error: 'Internal error' });
-    }
-  });
-
-  // Статус конкретной площадки (REST)
-  app.get('/status/:name', async (req, res) => {
-    try {
-      const snapshot = await snapshotRepo.load(req.params.name);
-      if (!snapshot) {
-        res.status(404).json({ ok: false, error: 'Not found' });
-        return;
-      }
-      res.json({ ok: true, checkedAt: snapshot.checkedAt, slots: snapshot.slots });
-    } catch (err) {
-      logger.error('Failed to get status', err instanceof Error ? err : new Error(String(err)));
-      res.status(500).json({ ok: false, error: 'Internal error' });
-    }
-  });
-
-  // SSE (Server-Sent Events)
-  app.get('/events', (req, res) => {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-
-    const listener = (event: string, data: unknown) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    };
-    eventBus.subscribe(listener);
-
-    req.on('close', () => {
-      logger.info('SSE client disconnected');
-    });
-  });
-
-  // Запуск HTTP-сервера
-  app.listen(config.apiPort, config.apiHost, () => {
-    logger.info(`HTTP server started on http://${config.apiHost}:${config.apiPort}`);
-  });
-
-  // WebSocket-сервер
-  const wss = new WebSocketServer({
-    host: config.apiHost,
-    port: config.wsPort,
-    verifyClient: (info: { origin: string; req: { headers: { origin?: string } } }) => {
-      const origin = info.origin || info.req?.headers?.origin || '';
-      if (config.corsOrigin === '*') return true;
-      return origin === config.corsOrigin;
-    },
-  });
-
-  wss.on('connection', (ws) => {
-    logger.info('WebSocket client connected');
-
-    const listener = (event: string, data: unknown) => {
-      ws.send(JSON.stringify({ event, data }));
-    };
-    eventBus.subscribe(listener);
-
-    ws.on('message', (msg) => {
-      try {
-        const { action } = JSON.parse(msg.toString());
-        if (action === 'refresh') {
-          ws.send(JSON.stringify({ event: 'info', data: { message: 'Refresh request received' } }));
+    // Статус всех площадок (REST)
+    app.get('/status', async (_req, res) => {
+        try {
+            const result: Record<string, unknown> = {};
+            for (const loc of locations) {
+                const snapshot = await snapshotRepo.load(loc.name);
+                result[loc.name] = snapshot
+                    ? {
+                          checkedAt: snapshot.checkedAt,
+                          slots: snapshot.slots,
+                      }
+                    : { checkedAt: null, slots: [] };
+            }
+            res.json({ ok: true, locations: result });
+        } catch (err) {
+            logger.error(
+                'Failed to get status',
+                err instanceof Error ? err : new Error(String(err))
+            );
+            res.status(500).json({ ok: false, error: 'Internal error' });
         }
-      } catch {
-        // ignore invalid messages
-      }
     });
 
-    ws.on('close', () => {
-      logger.info('WebSocket client disconnected');
+    // Статус конкретной площадки (REST)
+    app.get('/status/:name', async (req, res) => {
+        try {
+            const snapshot = await snapshotRepo.load(req.params.name);
+            if (!snapshot) {
+                res.status(404).json({ ok: false, error: 'Not found' });
+                return;
+            }
+            res.json({
+                ok: true,
+                checkedAt: snapshot.checkedAt,
+                slots: snapshot.slots,
+            });
+        } catch (err) {
+            logger.error(
+                'Failed to get status',
+                err instanceof Error ? err : new Error(String(err))
+            );
+            res.status(500).json({ ok: false, error: 'Internal error' });
+        }
     });
-  });
 
-  logger.info(`WebSocket server started on ws://${config.apiHost}:${config.wsPort}`);
+    // SSE (Server-Sent Events)
+    app.get('/events', (req, res) => {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+
+        const listener = (event: string, data: unknown) => {
+            res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        };
+        eventBus.subscribe(listener);
+
+        req.on('close', () => {
+            logger.info('SSE client disconnected');
+        });
+    });
+
+    const PatchConfigSchema = z.object({
+        pollIntervalMs: z.number().int().min(500).max(60000),
+    });
+
+    app.patch('/config', async (req, res) => {
+        // Защита по токену (заглушка, как на /report)
+        const auth = req.headers.authorization;
+        if (auth !== `Bearer ${config.apiToken}`) {
+            res.status(401).json({ ok: false, error: 'Unauthorized' });
+            return;
+        }
+
+        const result = PatchConfigSchema.safeParse(req.body);
+        if (!result.success) {
+            res.status(400).json({
+                ok: false,
+                error: 'Invalid pollIntervalMs',
+                details: result.error.issues,
+            });
+            return;
+        }
+
+        const { pollIntervalMs } = result.data;
+
+        // Обновляем интервал в Use Case
+        deps.monitorUseCase.setPollInterval(pollIntervalMs);
+
+        // Сохраняем в config.json для будущих запусков
+        try {
+            await deps.configRepository.savePollInterval(pollIntervalMs);
+            res.json({ ok: true, pollIntervalMs });
+        } catch (err) {
+            deps.logger.error(
+                'Failed to save config',
+                err instanceof Error ? err : new Error(String(err))
+            );
+            res.status(500).json({ ok: false, error: 'Failed to save config' });
+        }
+    });
+
+    // Запуск HTTP-сервера
+    app.listen(config.apiPort, config.apiHost, () => {
+        logger.info(
+            `HTTP server started on http://${config.apiHost}:${config.apiPort}`
+        );
+    });
+
+    // WebSocket-сервер
+    const wss = new WebSocketServer({
+        host: config.apiHost,
+        port: config.wsPort,
+        verifyClient: (info: {
+            origin: string;
+            req: { headers: { origin?: string } };
+        }) => {
+            const origin = info.origin || info.req?.headers?.origin || '';
+            if (config.corsOrigin === '*') return true;
+            return origin === config.corsOrigin;
+        },
+    });
+
+    wss.on('connection', (ws) => {
+        logger.info('WebSocket client connected');
+
+        const listener = (event: string, data: unknown) => {
+            ws.send(JSON.stringify({ event, data }));
+        };
+        eventBus.subscribe(listener);
+
+        ws.on('message', (msg) => {
+            try {
+                const { action } = JSON.parse(msg.toString());
+                if (action === 'refresh') {
+                    ws.send(
+                        JSON.stringify({
+                            event: 'info',
+                            data: { message: 'Refresh request received' },
+                        })
+                    );
+                }
+            } catch {
+                // ignore invalid messages
+            }
+        });
+
+        ws.on('close', () => {
+            logger.info('WebSocket client disconnected');
+        });
+    });
+
+    logger.info(
+        `WebSocket server started on ws://${config.apiHost}:${config.wsPort}`
+    );
 }
