@@ -1,3 +1,4 @@
+import { config } from '../config/env';
 import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
@@ -10,7 +11,7 @@ import { ReportController } from './controllers/ReportController';
 import { HealthController } from './controllers/HealthController';
 import { MonitorSlotsUseCase } from '../application/use-cases/MonitorSlotsUseCase';
 import { ConfigRepository } from '../infrastructure/repositories/ConfigRepository';
-import { config } from '../config/env';
+import { Server } from 'http';
 
 export interface ServerDependencies {
     logger: ILogger;
@@ -25,7 +26,11 @@ const PatchConfigSchema = z.object({
     pollIntervalMs: z.number().int().min(500).max(60000),
 });
 
-export function createServer(deps: ServerDependencies) {
+export function createServer(deps: ServerDependencies): {
+    app: express.Application;
+    httpServer: Server;
+    wss: WebSocketServer;
+} {
     const {
         logger,
         eventBus,
@@ -152,7 +157,7 @@ export function createServer(deps: ServerDependencies) {
     });
 
     // Запуск HTTP-сервера
-    app.listen(config.apiPort, config.apiHost, () => {
+    const httpServer = app.listen(config.apiPort, config.apiHost, () => {
         logger.info(
             `HTTP server started on http://${config.apiHost}:${config.apiPort}`
         );
@@ -204,4 +209,6 @@ export function createServer(deps: ServerDependencies) {
     logger.info(
         `WebSocket server started on ws://${config.apiHost}:${config.wsPort}`
     );
+
+    return { app, httpServer, wss };
 }
