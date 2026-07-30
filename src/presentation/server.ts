@@ -1,16 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
+import { z } from 'zod';
 import { ILogger } from '../application/ports/ILogger';
 import { IEventBus } from '../application/ports/IEventBus';
 import { ISnapshotRepository } from '../application/ports/ISnapshotRepository';
 import { MonitoredLocation } from '../application/use-cases/MonitorSlotsUseCase';
 import { ReportController } from './controllers/ReportController';
 import { HealthController } from './controllers/HealthController';
-import { config } from '../config/env';
 import { MonitorSlotsUseCase } from '../application/use-cases/MonitorSlotsUseCase';
 import { ConfigRepository } from '../infrastructure/repositories/ConfigRepository';
-import { z } from 'zod';
+import { config } from '../config/env';
 
 export interface ServerDependencies {
     logger: ILogger;
@@ -21,8 +21,19 @@ export interface ServerDependencies {
     configRepository: ConfigRepository;
 }
 
+const PatchConfigSchema = z.object({
+    pollIntervalMs: z.number().int().min(500).max(60000),
+});
+
 export function createServer(deps: ServerDependencies) {
-    const { logger, eventBus, snapshotRepo, locations } = deps;
+    const {
+        logger,
+        eventBus,
+        snapshotRepo,
+        locations,
+        monitorUseCase,
+        configRepository,
+    } = deps;
 
     const app = express();
     app.use(cors({ origin: config.corsOrigin }));
@@ -107,12 +118,8 @@ export function createServer(deps: ServerDependencies) {
         });
     });
 
-    const PatchConfigSchema = z.object({
-        pollIntervalMs: z.number().int().min(500).max(60000),
-    });
-
+    // Управление интервалом опроса (PATCH /config)
     app.patch('/config', async (req, res) => {
-        // Защита по токену (заглушка, как на /report)
         const auth = req.headers.authorization;
         if (auth !== `Bearer ${config.apiToken}`) {
             res.status(401).json({ ok: false, error: 'Unauthorized' });
@@ -130,16 +137,13 @@ export function createServer(deps: ServerDependencies) {
         }
 
         const { pollIntervalMs } = result.data;
+        monitorUseCase.setPollInterval(pollIntervalMs);
 
-        // Обновляем интервал в Use Case
-        deps.monitorUseCase.setPollInterval(pollIntervalMs);
-
-        // Сохраняем в config.json для будущих запусков
         try {
-            await deps.configRepository.savePollInterval(pollIntervalMs);
+            await configRepository.savePollInterval(pollIntervalMs);
             res.json({ ok: true, pollIntervalMs });
         } catch (err) {
-            deps.logger.error(
+            logger.error(
                 'Failed to save config',
                 err instanceof Error ? err : new Error(String(err))
             );

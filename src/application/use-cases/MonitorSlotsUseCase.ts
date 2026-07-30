@@ -42,10 +42,15 @@ export class MonitorSlotsUseCase {
         this.currentPollInterval = config.pollIntervalMs;
     }
 
+    setPollInterval(ms: number): void {
+        this.currentPollInterval = ms;
+        this.logger.info('Poll interval updated', { newIntervalMs: ms });
+    }
+
     async start(): Promise<void> {
         this.logger.info('MonitorSlotsUseCase started', {
             locations: this.config.locations.map((l) => l.name),
-            pollIntervalMs: this.config.pollIntervalMs,
+            pollIntervalMs: this.currentPollInterval,
         });
 
         let iterationId = 0;
@@ -99,7 +104,7 @@ export class MonitorSlotsUseCase {
 
                     const isStale = this.stalenessUseCase.execute(
                         oldSnapshot.checkedAt,
-                        this.config.pollIntervalMs,
+                        this.currentPollInterval,
                         this.config.staleToleranceMs
                     );
 
@@ -182,10 +187,5 @@ export class MonitorSlotsUseCase {
             const sleepTime = Math.max(0, this.currentPollInterval - elapsed);
             await new Promise((r) => setTimeout(r, sleepTime + jitter));
         }
-    }
-
-    setPollInterval(ms: number): void {
-        this.currentPollInterval = ms;
-        this.logger.info('Poll interval updated', { newIntervalMs: ms });
     }
 }
