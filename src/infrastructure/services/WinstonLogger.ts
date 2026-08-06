@@ -1,5 +1,5 @@
 import winston from 'winston';
-import { ILogger } from '../../core/ports/ILogger';
+import { ILogger } from '../../application/ports/ILogger';
 
 export class WinstonLogger implements ILogger {
   private logger: winston.Logger;

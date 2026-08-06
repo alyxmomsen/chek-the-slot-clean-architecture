@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { ILogger } from '../../core/ports/ILogger';
-import { MonitorSlotsUseCase } from '../../core/use-cases/MonitorSlotsUseCase';
+import { ILogger } from '../../application/ports/ILogger';
+import { MonitorSlotsUseCase } from '../../application/use-cases/MonitorSlotsUseCase';
 
 const ReportSchema = z.object({
     locationId: z.number().int().positive(),

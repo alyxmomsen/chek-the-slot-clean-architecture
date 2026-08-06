@@ -1,5 +1,5 @@
-import { Slot } from '../entities/Slot';
-import { SlotChange } from '../entities/SlotChange';
+import { Slot } from '../../domain/entities/Slot';
+import { SlotChange } from '../../domain/entities/SlotChange';
 
 export interface INotificationService {
     sendChanges(

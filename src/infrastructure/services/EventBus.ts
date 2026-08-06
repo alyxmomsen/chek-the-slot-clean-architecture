@@ -1,4 +1,4 @@
-import { IEventBus } from '../../core/ports/IEventBus';
+import { IEventBus } from '../../application/ports/IEventBus';
 
 export class EventBus implements IEventBus {
     private listeners: Array<(event: string, data: unknown) => void> = [];

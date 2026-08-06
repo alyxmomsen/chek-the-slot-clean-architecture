@@ -1,4 +1,4 @@
-import { ILogger } from '../../core/ports/ILogger';
+import { ILogger } from '../../application/ports/ILogger';
 
 export class ConsoleLogger implements ILogger {
     private readonly isDebug: boolean;

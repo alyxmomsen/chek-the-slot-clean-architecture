@@ -1,4 +1,4 @@
-import { Snapshot } from '../entities/Snapshot';
+import { Snapshot } from '../../domain/entities/Snapshot';
 
 export interface ISnapshotRepository {
     load(locationName: string): Promise<Snapshot | null>;

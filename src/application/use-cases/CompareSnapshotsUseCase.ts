@@ -1,6 +1,6 @@
-import { Slot } from '../entities/Slot';
-import { SlotChange } from '../entities/SlotChange';
-import { Snapshot } from '../entities/Snapshot';
+import { Slot } from '../../domain/entities/Slot';
+import { SlotChange } from '../../domain/entities/SlotChange';
+import { Snapshot } from '../../domain/entities/Snapshot';
 import { ISnapshotRepository } from '../ports/ISnapshotRepository';
 
 export class CompareSnapshotsUseCase {
