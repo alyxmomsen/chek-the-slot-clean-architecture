@@ -2,4 +2,5 @@ dist/
 node_modules/
 snapshots/
 .env
-logs/
+logs/nohup.out
+config.json
