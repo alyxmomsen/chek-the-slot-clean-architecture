@@ -12,6 +12,9 @@ import { HealthController } from './controllers/HealthController';
 import { MonitorSlotsUseCase } from '../application/use-cases/MonitorSlotsUseCase';
 import { ConfigRepository } from '../infrastructure/repositories/ConfigRepository';
 import { Server } from 'http';
+import { BookingRecord } from '../application/ports/IBookingPoolRepository';
+import { IBookingPoolRepository } from '../application/ports/IBookingPoolRepository';
+import { TelegramNotificationService } from '../infrastructure/services/TelegramNotificationService';
 
 export interface ServerDependencies {
     logger: ILogger;
@@ -20,10 +23,24 @@ export interface ServerDependencies {
     locations: MonitoredLocation[];
     monitorUseCase: MonitorSlotsUseCase;
     configRepository: ConfigRepository;
+    bookingPool: IBookingPoolRepository;
+    telegramService: TelegramNotificationService;
 }
 
 const PatchConfigSchema = z.object({
     pollIntervalMs: z.number().int().min(500).max(60000),
+});
+
+export const BookingResultSchema = z.object({
+    agentId: z.string().min(1),
+    locationId: z.number().int().positive(),
+    locationName: z.string().min(1),
+    chatId: z.string().min(1), // <-- добавили
+    success: z.boolean(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    time: z.string().regex(/^\d{2}:\d{2}$/),
+    bookingId: z.string().min(1),
+    timestamp: z.string().datetime(),
 });
 
 export function createServer(deps: ServerDependencies): {
@@ -154,6 +171,98 @@ export function createServer(deps: ServerDependencies): {
             );
             res.status(500).json({ ok: false, error: 'Failed to save config' });
         }
+    });
+
+    app.post('/booking-result', async (req, res) => {
+        const auth = req.headers.authorization;
+        if (auth !== `Bearer ${config.apiToken}`) {
+            res.status(401).json({ ok: false, error: 'Unauthorized' });
+            return;
+        }
+
+        const result = BookingResultSchema.safeParse(req.body);
+        if (!result.success) {
+            res.status(400).json({
+                ok: false,
+                error: 'Invalid body',
+                details: result.error.issues,
+            });
+            return;
+        }
+
+        const {
+            agentId,
+            locationId,
+            locationName,
+            chatId,
+            date,
+            time,
+            bookingId,
+            timestamp,
+        } = result.data;
+
+        const record: BookingRecord = {
+            id: `${agentId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            agentId,
+            locationId,
+            locationName,
+            chatId,
+            date,
+            time,
+            bookingId,
+            status: 'pending',
+            notifiedToTelegram: false,
+            resolution: null,
+            resolvedBy: null,
+            resolvedAt: null,
+            createdAt: timestamp,
+        };
+
+        await deps.bookingPool.add(record);
+
+        // Отправка в Telegram с кнопкой
+        await deps.telegramService.sendBookingResult({
+            address: locationName,
+            chatId,
+            record,
+        });
+
+        // Обновить статус на notified
+        await deps.bookingPool.update(record.id, {
+            status: 'notified',
+            notifiedToTelegram: true,
+        });
+
+        res.json({ ok: true, recordId: record.id });
+    });
+
+    app.get('/pending-actions/:agentId', async (req, res) => {
+        const auth = req.headers.authorization;
+        if (auth !== `Bearer ${config.apiToken}`) {
+            res.status(401).json({ ok: false, error: 'Unauthorized' });
+            return;
+        }
+
+        const records = await deps.bookingPool.getPendingByAgent(
+            req.params.agentId
+        );
+        res.json({ ok: true, actions: records });
+    });
+
+    app.post('/booking-action-complete', async (req, res) => {
+        const auth = req.headers.authorization;
+        if (auth !== `Bearer ${config.apiToken}`) {
+            res.status(401).json({ ok: false, error: 'Unauthorized' });
+            return;
+        }
+
+        const { recordId, action } = req.body; // упрощённая валидация
+        await deps.bookingPool.update(recordId, {
+            status: 'completed',
+            resolution: action,
+        });
+        // Опционально: удалить запись или пометить как архивную
+        res.json({ ok: true });
     });
 
     // Запуск HTTP-сервера

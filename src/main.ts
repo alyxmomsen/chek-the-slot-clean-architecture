@@ -10,6 +10,7 @@ import {
     MonitoredLocation,
 } from './application/use-cases/MonitorSlotsUseCase';
 import { ConfigRepository } from './infrastructure/repositories/ConfigRepository';
+import { FileBookingPoolRepository } from './infrastructure/repositories/FileBookingPoolRepository';
 import { createServer } from './presentation/server';
 
 (async () => {
@@ -28,9 +29,9 @@ import { createServer } from './presentation/server';
     const configRepository = new ConfigRepository(logger);
     const savedInterval = await configRepository.loadPollInterval();
 
-    let monitorConfig: MonitorConfig = {
+    const monitorConfig: MonitorConfig = {
         locations,
-        pollIntervalMs: savedInterval ?? config.pollIntervalMs, // из файла или .env
+        pollIntervalMs: savedInterval ?? config.pollIntervalMs,
         staleToleranceMs: config.staleToleranceMs,
         maxRunHours: config.maxRunHours,
     };
@@ -44,11 +45,19 @@ import { createServer } from './presentation/server';
         config.snapshotsDir,
         logger
     );
+
+    // Пул бронирований
+    const bookingPoolRepo = new FileBookingPoolRepository(logger);
+    await bookingPoolRepo.load();
+
+    // Сервис уведомлений (теперь с доступом к пулу бронирований)
     const notificationService = new TelegramNotificationService(
         config.botToken,
         config.fallbackChatId,
-        logger
+        logger,
+        bookingPoolRepo
     );
+
     const eventBus = new EventBus();
 
     // 5. Use Case
@@ -69,7 +78,12 @@ import { createServer } from './presentation/server';
         locations,
         monitorUseCase,
         configRepository,
+        bookingPool: bookingPoolRepo,
+        telegramService: notificationService,
     });
+
+    // Запуск Telegram-бота для приёма callback-запросов
+    await notificationService.launch();
 
     // 7. Запуск мониторинга в фоне
     monitorUseCase.start().catch((err) => {

@@ -81,12 +81,12 @@ export class MonitorSlotsUseCase {
                             'First run for location, sending summary',
                             { name: location.name }
                         );
-                        await this.notificationService.sendSummary(
-                            location.name,
-                            location.chatId,
-                            currentSlots,
-                            true
-                        );
+                        await this.notificationService.sendSummary({
+                            address: location.name,
+                            chatId: location.chatId,
+                            slots: currentSlots,
+                            isFirstRun: true,
+                        });
                         await this.snapshotRepo.save({
                             locationId: location.id,
                             locationName: location.name,
@@ -113,12 +113,12 @@ export class MonitorSlotsUseCase {
                             name: location.name,
                             checkedAt: oldSnapshot.checkedAt,
                         });
-                        await this.notificationService.sendSummary(
-                            location.name,
-                            location.chatId,
-                            currentSlots,
-                            false
-                        );
+                        await this.notificationService.sendSummary({
+                            address: location.name,
+                            chatId: location.chatId,
+                            slots: currentSlots,
+                            isFirstRun: false,
+                        });
                         await this.snapshotRepo.save({
                             locationId: location.id,
                             locationName: location.name,
@@ -145,11 +145,11 @@ export class MonitorSlotsUseCase {
                             name: location.name,
                             count: changes.length,
                         });
-                        await this.notificationService.sendChanges(
-                            location.name,
-                            location.chatId,
-                            changes
-                        );
+                        await this.notificationService.sendNotification({
+                            address: location.name,
+                            chatId: location.chatId,
+                            changes: changes,
+                        });
                         await this.snapshotRepo.save({
                             locationId: location.id,
                             locationName: location.name,

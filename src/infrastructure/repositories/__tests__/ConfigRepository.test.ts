@@ -11,6 +11,7 @@ describe('ConfigRepository', () => {
     let repo: ConfigRepository;
 
     beforeEach(() => {
+
         logger = {
             info: jest.fn(),
             warn: jest.fn(),
