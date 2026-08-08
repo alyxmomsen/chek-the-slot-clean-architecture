@@ -6,3 +6,4 @@ logs/nohup.out
 config.json
 logs/
 nohup.out
+bookings/

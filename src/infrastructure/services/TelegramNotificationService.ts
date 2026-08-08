@@ -115,6 +115,35 @@ export class TelegramNotificationService implements INotificationService {
             }
         });
 
+
+        // Первый шаг – нажатие на кнопку «Обработать бронь»
+        this.bot.action(/booking:(.+)/, async (ctx) => {
+            const recordId = ctx.match[1];
+            this.logger.info('[TelegramService] Booking action triggered', { recordId });
+
+            try {
+                const record = await this.bookingPool.get(recordId);
+                if (!record) {
+                    await ctx.answerCbQuery('Запись не найдена');
+                    return;
+                }
+
+                // Меняем кнопку «Обработать бронь» на «Оставить» и «Отменить»
+                await ctx.editMessageReplyMarkup({
+                    inline_keyboard: [
+                        [
+                            { text: '✅ Оставить', callback_data: `resolve:${recordId}:keep` },
+                            { text: '❌ Отменить', callback_data: `resolve:${recordId}:cancel` },
+                        ],
+                    ],
+                });
+                this.logger.info('[TelegramService] Booking: reply markup updated');
+                await ctx.answerCbQuery();
+            } catch (e) {
+                this.logger.error('[TelegramService] Booking action error', e instanceof Error ? e : new Error(String(e)));
+            }
+        });
+
         this.logger.info('[TelegramService] Bot actions registered');
     }
 
