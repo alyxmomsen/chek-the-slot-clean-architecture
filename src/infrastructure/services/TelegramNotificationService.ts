@@ -25,79 +25,114 @@ export class TelegramNotificationService implements INotificationService {
         this.isDevelopment = process.env.NODE_ENV === 'development';
         this.bookingPool = bookingPool;
 
+        // === ЛОГИРОВАНИЕ: регистрируем обработчики ===
+        this.logger.info('[TelegramService] Registering bot actions...');
+
         // Первый шаг – выбор опции
         this.bot.action(/resolve:(.+):(keep|cancel)/, async (ctx) => {
             const recordId = ctx.match[1];
             const action = ctx.match[2];
-
-            await ctx.editMessageReplyMarkup({
-                inline_keyboard: [
-                    [
-                        {
-                            text:
-                                action === 'keep'
-                                    ? '✅ Точно оставить'
-                                    : '❌ Точно отменить',
-                            callback_data: `confirm:${recordId}:${action}`,
-                        },
-                    ],
-                ],
+            this.logger.info('[TelegramService] Resolve action triggered', {
+                recordId,
+                action,
+                from: ctx.from?.username || ctx.from?.first_name,
             });
-            await ctx.answerCbQuery('Подтвердите действие');
+
+            try {
+                await ctx.editMessageReplyMarkup({
+                    inline_keyboard: [
+                        [
+                            {
+                                text:
+                                    action === 'keep'
+                                        ? '✅ Точно оставить'
+                                        : '❌ Точно отменить',
+                                callback_data: `confirm:${recordId}:${action}`,
+                            },
+                        ],
+                    ],
+                });
+                this.logger.info('[TelegramService] Resolve: reply markup updated');
+                await ctx.answerCbQuery('Подтвердите действие');
+            } catch (e) {
+                this.logger.error('[TelegramService] Resolve action error', e instanceof Error ? e : new Error(String(e)));
+            }
         });
 
         // Второй шаг – подтверждение
         this.bot.action(/confirm:(.+):(keep|cancel)/, async (ctx) => {
             const recordId = ctx.match[1];
             const action = ctx.match[2] as 'keep' | 'cancel';
-
-            // Получаем запись из пула
-            const record = await this.bookingPool.get(recordId);
-            if (!record) {
-                await ctx.answerCbQuery('Запись не найдена');
-                return;
-            }
-
-            // Обновляем запись в пуле
-            await this.bookingPool.update(recordId, {
-                status: 'resolved',
-                resolution: action,
-                resolvedBy:
-                    ctx.from?.username || ctx.from?.first_name || 'unknown',
-                resolvedAt: new Date().toISOString(),
+            this.logger.info('[TelegramService] Confirm action triggered', {
+                recordId,
+                action,
+                from: ctx.from?.username || ctx.from?.first_name,
             });
 
-            // Редактируем сообщение в чате
-            const decisionText = action === 'keep' ? 'оставить' : 'отменить';
-            await ctx.editMessageText(
-                `🎯 Бронь: ${record.locationName}, ${record.date} ${record.time}\n` +
-                    `✅ Решение: ${decisionText} (${ctx.from?.username || ctx.from?.first_name})`
-            );
-
-            // Открепляем сообщение после решения
             try {
-                await this.bot.telegram.unpinChatMessage(
-                    record.chatId,
-                    ctx.update.callback_query.message?.message_id
-                );
-            } catch (e) {
-                this.logger.warn('Не удалось открепить сообщение', {
-                    error: (e as Error).message,
-                });
-            }
+                // Получаем запись из пула
+                const record = await this.bookingPool.get(recordId);
+                if (!record) {
+                    this.logger.warn('[TelegramService] Confirm: record not found', { recordId });
+                    await ctx.answerCbQuery('Запись не найдена');
+                    return;
+                }
 
-            await ctx.answerCbQuery('Решение принято');
+                // Обновляем запись в пуле
+                await this.bookingPool.update(recordId, {
+                    status: 'resolved',
+                    resolution: action,
+                    resolvedBy:
+                        ctx.from?.username || ctx.from?.first_name || 'unknown',
+                    resolvedAt: new Date().toISOString(),
+                });
+                this.logger.info('[TelegramService] Confirm: pool updated');
+
+                // Редактируем сообщение в чате
+                const decisionText = action === 'keep' ? 'оставить' : 'отменить';
+                await ctx.editMessageText(
+                    `🎯 Бронь: ${record.locationName}, ${record.date} ${record.time}\n` +
+                        `✅ Решение: ${decisionText} (${ctx.from?.username || ctx.from?.first_name})`
+                );
+                this.logger.info('[TelegramService] Confirm: message edited');
+
+                // Открепляем сообщение после решения
+                try {
+                    await this.bot.telegram.unpinChatMessage(
+                        record.chatId,
+                        ctx.update.callback_query.message?.message_id
+                    );
+                    this.logger.info('[TelegramService] Confirm: message unpinned');
+                } catch (e) {
+                    this.logger.warn('[TelegramService] Confirm: unpin failed', {
+                        error: (e as Error).message,
+                    });
+                }
+
+                await ctx.answerCbQuery('Решение принято');
+            } catch (e) {
+                this.logger.error('[TelegramService] Confirm action error', e instanceof Error ? e : new Error(String(e)));
+            }
         });
+
+        this.logger.info('[TelegramService] Bot actions registered');
     }
 
     /** Запускает polling бота для приёма callback'ов */
     async launch(): Promise<void> {
-    if (!this.isDevelopment) {
-            this.bot.launch().then(() => {
-                this.logger.info('Telegram bot polling started');
-            }).catch(err => {
-                this.logger.error('Failed to launch bot', err instanceof Error ? err : new Error(String(err)));
-            });
+        this.logger.info('[TelegramService] launch() called', { isDevelopment: this.isDevelopment });
+        if (!this.isDevelopment) {
+            this.logger.info('[TelegramService] Starting bot polling...');
+            // Запускаем без await, чтобы не блокировать
+            this.bot.launch()
+                .then(() => {
+                    this.logger.info('[TelegramService] Bot polling started successfully');
+                })
+                .catch((err) => {
+                    this.logger.error('[TelegramService] Bot polling failed', err instanceof Error ? err : new Error(String(err)));
+                });
+        } else {
+            this.logger.info('[TelegramService] Skipping bot polling (development mode)');
         }
     }
 
@@ -184,6 +219,8 @@ export class TelegramNotificationService implements INotificationService {
         const text = `🎯 Бронь: ${address}, ${record.date} ${record.time}`;
         const callbackData = `booking:${record.id}`;
 
+        this.logger.info('[TelegramService] sendBookingResult', { targetChatId, callbackData });
+
         if (this.isDevelopment) {
             this.logger.info('Dev mode: booking result not sent', {
                 chatId: targetChatId,
@@ -192,30 +229,36 @@ export class TelegramNotificationService implements INotificationService {
             return;
         }
 
-        const sent = await this.bot.telegram.sendMessage(targetChatId, text, {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        {
-                            text: '⚙️ Обработать бронь',
-                            callback_data: callbackData,
-                        },
-                    ],
-                ],
-            },
-        });
-
-        // Закрепляем сообщение
         try {
-            await this.bot.telegram.pinChatMessage(
-                targetChatId,
-                sent.message_id,
-                { disable_notification: true }
-            );
-        } catch (e) {
-            this.logger.warn('Не удалось закрепить сообщение', {
-                error: (e as Error).message,
+            const sent = await this.bot.telegram.sendMessage(targetChatId, text, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: '⚙️ Обработать бронь',
+                                callback_data: callbackData,
+                            },
+                        ],
+                    ],
+                },
             });
+            this.logger.info('[TelegramService] Booking message sent', { messageId: sent.message_id });
+
+            // Закрепляем сообщение
+            try {
+                await this.bot.telegram.pinChatMessage(
+                    targetChatId,
+                    sent.message_id,
+                    { disable_notification: true }
+                );
+                this.logger.info('[TelegramService] Booking message pinned');
+            } catch (e) {
+                this.logger.warn('[TelegramService] Pin failed', {
+                    error: (e as Error).message,
+                });
+            }
+        } catch (e) {
+            this.logger.error('[TelegramService] sendBookingResult error', e instanceof Error ? e : new Error(String(e)));
         }
     }
 
