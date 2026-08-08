@@ -14,6 +14,7 @@ export class TelegramNotificationService implements INotificationService {
     private readonly bot: Telegraf;
     private readonly isDevelopment: boolean;
     private readonly bookingPool: IBookingPoolRepository;
+    private readonly logFilePath?: string;
 
     constructor(
         botToken: string,
@@ -21,6 +22,8 @@ export class TelegramNotificationService implements INotificationService {
         private readonly logger: ILogger,
         bookingPool: IBookingPoolRepository
     ) {
+        this.logFilePath = process.env.BOT_TOKEN_DEV ? undefined : 'dev_messages.log';
+
         this.bot = new Telegraf(botToken);
         this.isDevelopment = process.env.NODE_ENV === 'development';
         this.bookingPool = bookingPool;
@@ -52,10 +55,15 @@ export class TelegramNotificationService implements INotificationService {
                         ],
                     ],
                 });
-                this.logger.info('[TelegramService] Resolve: reply markup updated');
+                this.logger.info(
+                    '[TelegramService] Resolve: reply markup updated'
+                );
                 await ctx.answerCbQuery('Подтвердите действие');
             } catch (e) {
-                this.logger.error('[TelegramService] Resolve action error', e instanceof Error ? e : new Error(String(e)));
+                this.logger.error(
+                    '[TelegramService] Resolve action error',
+                    e instanceof Error ? e : new Error(String(e))
+                );
             }
         });
 
@@ -73,7 +81,10 @@ export class TelegramNotificationService implements INotificationService {
                 // Получаем запись из пула
                 const record = await this.bookingPool.get(recordId);
                 if (!record) {
-                    this.logger.warn('[TelegramService] Confirm: record not found', { recordId });
+                    this.logger.warn(
+                        '[TelegramService] Confirm: record not found',
+                        { recordId }
+                    );
                     await ctx.answerCbQuery('Запись не найдена');
                     return;
                 }
@@ -89,7 +100,8 @@ export class TelegramNotificationService implements INotificationService {
                 this.logger.info('[TelegramService] Confirm: pool updated');
 
                 // Редактируем сообщение в чате
-                const decisionText = action === 'keep' ? 'оставить' : 'отменить';
+                const decisionText =
+                    action === 'keep' ? 'оставить' : 'отменить';
                 await ctx.editMessageText(
                     `🎯 Бронь: ${record.locationName}, ${record.date} ${record.time}\n` +
                         `✅ Решение: ${decisionText} (${ctx.from?.username || ctx.from?.first_name})`
@@ -102,24 +114,33 @@ export class TelegramNotificationService implements INotificationService {
                         record.chatId,
                         ctx.update.callback_query.message?.message_id
                     );
-                    this.logger.info('[TelegramService] Confirm: message unpinned');
+                    this.logger.info(
+                        '[TelegramService] Confirm: message unpinned'
+                    );
                 } catch (e) {
-                    this.logger.warn('[TelegramService] Confirm: unpin failed', {
-                        error: (e as Error).message,
-                    });
+                    this.logger.warn(
+                        '[TelegramService] Confirm: unpin failed',
+                        {
+                            error: (e as Error).message,
+                        }
+                    );
                 }
 
                 await ctx.answerCbQuery('Решение принято');
             } catch (e) {
-                this.logger.error('[TelegramService] Confirm action error', e instanceof Error ? e : new Error(String(e)));
+                this.logger.error(
+                    '[TelegramService] Confirm action error',
+                    e instanceof Error ? e : new Error(String(e))
+                );
             }
         });
-
 
         // Первый шаг – нажатие на кнопку «Обработать бронь»
         this.bot.action(/booking:(.+)/, async (ctx) => {
             const recordId = ctx.match[1];
-            this.logger.info('[TelegramService] Booking action triggered', { recordId });
+            this.logger.info('[TelegramService] Booking action triggered', {
+                recordId,
+            });
 
             try {
                 const record = await this.bookingPool.get(recordId);
@@ -132,15 +153,26 @@ export class TelegramNotificationService implements INotificationService {
                 await ctx.editMessageReplyMarkup({
                     inline_keyboard: [
                         [
-                            { text: '✅ Оставить', callback_data: `resolve:${recordId}:keep` },
-                            { text: '❌ Отменить', callback_data: `resolve:${recordId}:cancel` },
+                            {
+                                text: '✅ Оставить',
+                                callback_data: `resolve:${recordId}:keep`,
+                            },
+                            {
+                                text: '❌ Отменить',
+                                callback_data: `resolve:${recordId}:cancel`,
+                            },
                         ],
                     ],
                 });
-                this.logger.info('[TelegramService] Booking: reply markup updated');
+                this.logger.info(
+                    '[TelegramService] Booking: reply markup updated'
+                );
                 await ctx.answerCbQuery();
             } catch (e) {
-                this.logger.error('[TelegramService] Booking action error', e instanceof Error ? e : new Error(String(e)));
+                this.logger.error(
+                    '[TelegramService] Booking action error',
+                    e instanceof Error ? e : new Error(String(e))
+                );
             }
         });
 
@@ -149,20 +181,30 @@ export class TelegramNotificationService implements INotificationService {
 
     /** Запускает polling бота для приёма callback'ов */
     async launch(): Promise<void> {
-        this.logger.info('[TelegramService] launch() called', { isDevelopment: this.isDevelopment });
-        if (!this.isDevelopment) {
-            this.logger.info('[TelegramService] Starting bot polling...');
-            // Запускаем без await, чтобы не блокировать
-            this.bot.launch()
-                .then(() => {
-                    this.logger.info('[TelegramService] Bot polling started successfully');
-                })
-                .catch((err) => {
-                    this.logger.error('[TelegramService] Bot polling failed', err instanceof Error ? err : new Error(String(err)));
-                });
-        } else {
-            this.logger.info('[TelegramService] Skipping bot polling (development mode)');
-        }
+        this.logger.info('[TelegramService] launch() called', {
+            isDevelopment: this.isDevelopment,
+        });
+
+        // if (this.isDevelopment) {
+        //     this.logger.info('[TelegramService] Skipping bot polling (development mode)');
+        //     return;
+        // }
+
+        this.logger.info('[TelegramService] Starting bot polling...');
+        // Запускаем без await, чтобы не блокировать
+        this.bot
+            .launch()
+            .then(() => {
+                this.logger.info(
+                    '[TelegramService] Bot polling started successfully'
+                );
+            })
+            .catch((err) => {
+                this.logger.error(
+                    '[TelegramService] Bot polling failed',
+                    err instanceof Error ? err : new Error(String(err))
+                );
+            });
     }
 
     async sendNotification(options: {
@@ -248,30 +290,44 @@ export class TelegramNotificationService implements INotificationService {
         const text = `🎯 Бронь: ${address}, ${record.date} ${record.time}`;
         const callbackData = `booking:${record.id}`;
 
-        this.logger.info('[TelegramService] sendBookingResult', { targetChatId, callbackData });
+        this.logger.info('[TelegramService] sendBookingResult', {
+            targetChatId,
+            callbackData,
+        });
 
         if (this.isDevelopment) {
-            this.logger.info('Dev mode: booking result not sent', {
-                chatId: targetChatId,
-                text,
-            });
-            return;
+            // Если задан dev-токен — отправляем реально (в тестовый чат)
+            // Иначе — пишем в файл
+            if (!process.env.BOT_TOKEN_DEV) {
+                const fs = require('fs');
+                const logLine = `[${new Date().toISOString()}] TO: ${chatId} | ${text}\n`;
+                fs.appendFileSync('dev_messages.log', logLine);
+                this.logger.info('Dev mode: message saved to dev_messages.log');
+                return;
+            }
+            // Если BOT_TOKEN_DEV задан, продолжаем реальную отправку
         }
 
         try {
-            const sent = await this.bot.telegram.sendMessage(targetChatId, text, {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text: '⚙️ Обработать бронь',
-                                callback_data: callbackData,
-                            },
+            const sent = await this.bot.telegram.sendMessage(
+                targetChatId,
+                text,
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: '⚙️ Обработать бронь',
+                                    callback_data: callbackData,
+                                },
+                            ],
                         ],
-                    ],
-                },
+                    },
+                }
+            );
+            this.logger.info('[TelegramService] Booking message sent', {
+                messageId: sent.message_id,
             });
-            this.logger.info('[TelegramService] Booking message sent', { messageId: sent.message_id });
 
             // Закрепляем сообщение
             try {
@@ -287,17 +343,26 @@ export class TelegramNotificationService implements INotificationService {
                 });
             }
         } catch (e) {
-            this.logger.error('[TelegramService] sendBookingResult error', e instanceof Error ? e : new Error(String(e)));
+            this.logger.error(
+                '[TelegramService] sendBookingResult error',
+                e instanceof Error ? e : new Error(String(e))
+            );
         }
     }
 
+    // В методе send:
     private async send(chatId: string, text: string): Promise<void> {
         if (this.isDevelopment) {
-            this.logger.info('Dev mode: message not sent', {
-                chatId,
-                text: text.slice(0, 100),
-            });
-            return;
+            // Если задан dev-токен — отправляем реально (в тестовый чат)
+            // Иначе — пишем в файл
+            if (!process.env.BOT_TOKEN_DEV) {
+                const fs = require('fs');
+                const logLine = `[${new Date().toISOString()}] TO: ${chatId} | ${text}\n`;
+                fs.appendFileSync('dev_messages.log', logLine);
+                this.logger.info('Dev mode: message saved to dev_messages.log');
+                return;
+            }
+            // Если BOT_TOKEN_DEV задан, продолжаем реальную отправку
         }
 
         try {

@@ -50,9 +50,14 @@ import { createServer } from './presentation/server';
     const bookingPoolRepo = new FileBookingPoolRepository(logger);
     await bookingPoolRepo.load();
 
+    const telegramToken =
+        config.nodeEnv === 'development' && config.botTokenDev
+            ? config.botTokenDev
+            : config.botToken;
+
     // Сервис уведомлений (теперь с доступом к пулу бронирований)
     const notificationService = new TelegramNotificationService(
-        config.botToken,
+        telegramToken,
         config.fallbackChatId,
         logger,
         bookingPoolRepo
@@ -85,7 +90,6 @@ import { createServer } from './presentation/server';
     // Запуск Telegram-бота для приёма callback-запросов
     notificationService.launch();
 
-    
     // 7. Запуск мониторинга в фоне
     monitorUseCase.start().catch((err) => {
         logger.error(

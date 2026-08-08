@@ -8,6 +8,7 @@ import { IEventBus } from '../ports/IEventBus';
 import { CompareSnapshotsUseCase } from './CompareSnapshotsUseCase';
 import { GenerateSummaryUseCase } from './GenerateSummaryUseCase';
 import { DetectStalenessUseCase } from './DetectStalenessUseCase';
+import { config } from '../../config/env';
 
 export interface MonitoredLocation {
     readonly id: number;
@@ -83,7 +84,10 @@ export class MonitorSlotsUseCase {
                         );
                         await this.notificationService.sendSummary({
                             address: location.name,
-                            chatId: location.chatId,
+                            chatId:
+                                config.nodeEnv === 'development'
+                                    ? config.devChatId || config.fallbackChatId
+                                    : location.chatId,
                             slots: currentSlots,
                             isFirstRun: true,
                         });
@@ -115,7 +119,10 @@ export class MonitorSlotsUseCase {
                         });
                         await this.notificationService.sendSummary({
                             address: location.name,
-                            chatId: location.chatId,
+                            chatId:
+                                config.nodeEnv === 'development'
+                                    ? config.devChatId || config.fallbackChatId
+                                    : location.chatId,
                             slots: currentSlots,
                             isFirstRun: false,
                         });
@@ -147,7 +154,10 @@ export class MonitorSlotsUseCase {
                         });
                         await this.notificationService.sendNotification({
                             address: location.name,
-                            chatId: location.chatId,
+                            chatId:
+                                config.nodeEnv === 'development'
+                                    ? config.devChatId || config.fallbackChatId
+                                    : location.chatId,
                             changes: changes,
                         });
                         await this.snapshotRepo.save({
