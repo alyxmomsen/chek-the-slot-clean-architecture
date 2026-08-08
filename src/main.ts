@@ -83,7 +83,7 @@ import { createServer } from './presentation/server';
     });
 
     // Запуск Telegram-бота для приёма callback-запросов
-    await notificationService.launch();
+    notificationService.launch();
 
     // 7. Запуск мониторинга в фоне
     monitorUseCase.start().catch((err) => {
