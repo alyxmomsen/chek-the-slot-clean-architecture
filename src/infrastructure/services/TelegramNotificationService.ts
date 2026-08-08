@@ -92,9 +92,12 @@ export class TelegramNotificationService implements INotificationService {
 
     /** Запускает polling бота для приёма callback'ов */
     async launch(): Promise<void> {
-        if (!this.isDevelopment) {
-            await this.bot.launch();
-            this.logger.info('Telegram bot polling started');
+    if (!this.isDevelopment) {
+            this.bot.launch().then(() => {
+                this.logger.info('Telegram bot polling started');
+            }).catch(err => {
+                this.logger.error('Failed to launch bot', err instanceof Error ? err : new Error(String(err)));
+            });
         }
     }
 
