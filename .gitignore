@@ -7,3 +7,4 @@ config.json
 logs/
 nohup.out
 bookings/
+dev_messages.log
