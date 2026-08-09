@@ -5,6 +5,7 @@ import { ISnapshotRepository } from '../ports/ISnapshotRepository';
 import { INotificationService } from '../ports/INotificationService';
 import { ILogger } from '../ports/ILogger';
 import { IEventBus } from '../ports/IEventBus';
+import { IIntervalScheduleRepository } from '../ports/IIntervalScheduleRepository';
 import { CompareSnapshotsUseCase } from './CompareSnapshotsUseCase';
 import { GenerateSummaryUseCase } from './GenerateSummaryUseCase';
 import { DetectStalenessUseCase } from './DetectStalenessUseCase';
@@ -35,7 +36,8 @@ export class MonitorSlotsUseCase {
         private readonly notificationService: INotificationService,
         private readonly logger: ILogger,
         private readonly config: MonitorConfig,
-        private readonly eventBus: IEventBus
+        private readonly eventBus: IEventBus,
+        private readonly scheduleRepo?: IIntervalScheduleRepository
     ) {
         this.compareUseCase = new CompareSnapshotsUseCase(snapshotRepo);
         this.summaryUseCase = new GenerateSummaryUseCase();
@@ -54,9 +56,31 @@ export class MonitorSlotsUseCase {
             pollIntervalMs: this.currentPollInterval,
         });
 
+        // Загружаем расписание интервалов, если репозиторий предоставлен
+        let schedule = null;
+        if (this.scheduleRepo) {
+            schedule = await this.scheduleRepo.load();
+            if (schedule) {
+                this.logger.info('Polling schedule loaded', { intervals: schedule.intervals.length });
+            } else {
+                this.logger.info('No polling schedule found, using default interval');
+            }
+        }
+
         let iterationId = 0;
 
         while (true) {
+            // Проверяем активный интервал перед каждой итерацией
+            if (schedule) {
+                const activeInterval = schedule.getActiveInterval(new Date());
+                if (activeInterval && activeInterval.pollIntervalMs !== this.currentPollInterval) {
+                    this.setPollInterval(activeInterval.pollIntervalMs);
+                } else if (!activeInterval && this.currentPollInterval !== this.config.pollIntervalMs) {
+                    // Время не покрыто расписанием — возвращаемся к дефолтному интервалу
+                    this.setPollInterval(this.config.pollIntervalMs);
+                }
+            }
+
             iterationId++;
             const cycleStart = Date.now();
 

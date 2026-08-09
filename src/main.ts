@@ -12,6 +12,7 @@ import {
 import { ConfigRepository } from './infrastructure/repositories/ConfigRepository';
 import { FileBookingPoolRepository } from './infrastructure/repositories/FileBookingPoolRepository';
 import { createServer } from './presentation/server';
+import { FileIntervalScheduleRepository } from './infrastructure/repositories/FileIntervalScheduleRepository';
 
 (async () => {
     // 1. Логгер
@@ -50,6 +51,8 @@ import { createServer } from './presentation/server';
     const bookingPoolRepo = new FileBookingPoolRepository(logger);
     await bookingPoolRepo.load();
 
+    const scheduleRepo = new FileIntervalScheduleRepository(logger);
+
     const telegramToken =
         config.nodeEnv === 'development' && config.botTokenDev
             ? config.botTokenDev
@@ -72,7 +75,8 @@ import { createServer } from './presentation/server';
         notificationService,
         logger,
         monitorConfig,
-        eventBus
+        eventBus,
+        scheduleRepo,
     );
 
     // 6. Запуск HTTP/WS сервера (Presentation)
