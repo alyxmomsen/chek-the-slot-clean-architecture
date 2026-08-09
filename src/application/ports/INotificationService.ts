@@ -14,4 +14,9 @@ export interface INotificationService {
         slots: Slot[];
         isFirstRun: boolean;
     }): Promise<void>;
+
+    sendSystemMessage(options: {
+        message: string;
+        chatId?: string; // если не указан, используется fallback-чат
+    }): Promise<void>;
 }

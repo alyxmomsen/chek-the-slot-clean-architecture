@@ -27,7 +27,7 @@ import { FileIntervalScheduleRepository } from './infrastructure/repositories/Fi
     ];
 
     // 3. Репозиторий конфигурации (читает config.json)
-    const configRepository = new ConfigRepository(logger);
+    const configRepository = new ConfigRepository(logger, config.configsRootDir);
     const savedInterval = await configRepository.loadPollInterval();
 
     const monitorConfig: MonitorConfig = {
@@ -42,16 +42,17 @@ import { FileIntervalScheduleRepository } from './infrastructure/repositories/Fi
         locations.map((l) => l.id),
         logger
     );
+
     const snapshotRepo = new FileSnapshotRepository(
         config.snapshotsDir,
         logger
     );
 
     // Пул бронирований
-    const bookingPoolRepo = new FileBookingPoolRepository(logger);
+    const bookingPoolRepo = new FileBookingPoolRepository(logger, config.configsRootDir);
     await bookingPoolRepo.load();
 
-    const scheduleRepo = new FileIntervalScheduleRepository(logger);
+    const scheduleRepo = new FileIntervalScheduleRepository(logger, config.configsRootDir);
 
     const telegramToken =
         config.nodeEnv === 'development' && config.botTokenDev
@@ -63,7 +64,8 @@ import { FileIntervalScheduleRepository } from './infrastructure/repositories/Fi
         telegramToken,
         config.fallbackChatId,
         logger,
-        bookingPoolRepo
+        bookingPoolRepo,
+        config.logsRootDir,
     );
 
     const eventBus = new EventBus();

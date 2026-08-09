@@ -16,6 +16,7 @@ export class FileBookingPoolRepository implements IBookingPoolRepository {
     ) {
         this.poolPath = path.join(
             poolDir || process.cwd(),
+            'data',
             'bookings',
             'pool.json'
         );

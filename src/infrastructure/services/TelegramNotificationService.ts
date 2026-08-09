@@ -9,6 +9,7 @@ import {
 } from '../../application/ports/IBookingPoolRepository';
 import { INotificationService } from '../../application/ports/INotificationService';
 import { ILogger } from '../../application/ports/ILogger';
+import path from 'path';
 
 export class TelegramNotificationService implements INotificationService {
     private readonly bot: Telegraf;
@@ -20,9 +21,12 @@ export class TelegramNotificationService implements INotificationService {
         botToken: string,
         private readonly fallbackChatId: string,
         private readonly logger: ILogger,
-        bookingPool: IBookingPoolRepository
+        bookingPool: IBookingPoolRepository,
+        private readonly logsDir?: string
     ) {
-        this.logFilePath = process.env.BOT_TOKEN_DEV ? undefined : 'dev_messages.log';
+        this.logFilePath = process.env.BOT_TOKEN_DEV
+            ? undefined
+            : 'dev_messages.log';
 
         this.bot = new Telegraf(botToken);
         this.isDevelopment = process.env.NODE_ENV === 'development';
@@ -207,6 +211,39 @@ export class TelegramNotificationService implements INotificationService {
             });
     }
 
+    async sendSystemMessage(options: {
+        message: string;
+        chatId?: string;
+    }): Promise<void> {
+        const targetChatId = options.chatId || this.fallbackChatId;
+        const text = `⚙️ ${options.message}`;
+
+        if (this.isDevelopment) {
+            if (options.chatId) {
+                await this.bot.telegram.sendMessage(targetChatId, text);
+            }
+
+            this.logger.info('Dev mode: system message not sent', {
+                chatId: targetChatId,
+                text,
+            });
+            return;
+        }
+
+        try {
+            await this.bot.telegram.sendMessage(targetChatId, text);
+            this.logger.info('System message sent to Telegram', {
+                chatId: targetChatId,
+            });
+        } catch (err) {
+            this.logger.error(
+                'Failed to send system message',
+                err instanceof Error ? err : new Error(String(err)),
+                { chatId: targetChatId }
+            );
+        }
+    }
+
     async sendNotification(options: {
         address: string;
         changes: SlotChange[];
@@ -295,17 +332,26 @@ export class TelegramNotificationService implements INotificationService {
             callbackData,
         });
 
-        if (this.isDevelopment) {
-            // Если задан dev-токен — отправляем реально (в тестовый чат)
-            // Иначе — пишем в файл
-            if (!process.env.BOT_TOKEN_DEV) {
-                const fs = require('fs');
-                const logLine = `[${new Date().toISOString()}] TO: ${chatId} | ${text}\n`;
-                fs.appendFileSync('dev_messages.log', logLine);
-                this.logger.info('Dev mode: message saved to dev_messages.log');
-                return;
-            }
-            // Если BOT_TOKEN_DEV задан, продолжаем реальную отправку
+        if (this.isDevelopment && !process.env.BOT_TOKEN_DEV) {
+            const fs = require('fs');
+            const logFile = this.logsDir
+                ? path.join(
+                      this.logsDir,
+                      process.env.TELEGRAM__DEFAULT_DEV_MESSAGE_LOG ||
+                          'dev_messages.log'
+                  )
+                : path.join(
+                      process.cwd(),
+                      'logs',
+                      process.env.TELEGRAM__DEFAULT_DEV_MESSAGE_LOG ||
+                          'dev_messages.log'
+                  );
+            const logLine = `[${new Date().toISOString()}] TO: ${targetChatId} | ${text}\n`;
+            fs.appendFileSync(logFile, logLine);
+            this.logger.info('Dev mode: booking result saved to file', {
+                logFile,
+            });
+            return;
         }
 
         try {
@@ -329,7 +375,6 @@ export class TelegramNotificationService implements INotificationService {
                 messageId: sent.message_id,
             });
 
-            // Закрепляем сообщение
             try {
                 await this.bot.telegram.pinChatMessage(
                     targetChatId,
@@ -350,19 +395,25 @@ export class TelegramNotificationService implements INotificationService {
         }
     }
 
-    // В методе send:
     private async send(chatId: string, text: string): Promise<void> {
-        if (this.isDevelopment) {
-            // Если задан dev-токен — отправляем реально (в тестовый чат)
-            // Иначе — пишем в файл
-            if (!process.env.BOT_TOKEN_DEV) {
-                const fs = require('fs');
-                const logLine = `[${new Date().toISOString()}] TO: ${chatId} | ${text}\n`;
-                fs.appendFileSync('dev_messages.log', logLine);
-                this.logger.info('Dev mode: message saved to dev_messages.log');
-                return;
-            }
-            // Если BOT_TOKEN_DEV задан, продолжаем реальную отправку
+        if (this.isDevelopment && !process.env.BOT_TOKEN_DEV) {
+            const fs = require('fs');
+            const logFile = this.logsDir
+                ? path.join(
+                      this.logsDir,
+                      process.env.TELEGRAM__DEFAULT_DEV_MESSAGE_LOG ||
+                          'dev_messages.log'
+                  )
+                : path.join(
+                      process.cwd(),
+                      'logs',
+                      process.env.TELEGRAM__DEFAULT_DEV_MESSAGE_LOG ||
+                          'dev_messages.log'
+                  );
+            const logLine = `[${new Date().toISOString()}] TO: ${chatId} | ${text}\n`;
+            fs.appendFileSync(logFile, logLine);
+            this.logger.info('Dev mode: message saved to file', { logFile });
+            return;
         }
 
         try {

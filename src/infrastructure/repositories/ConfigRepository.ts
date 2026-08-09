@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { ILogger } from '../../application/ports/ILogger';
+import { config } from 'dotenv';
 
 export class ConfigRepository {
     private readonly configPath: string;
@@ -9,6 +10,12 @@ export class ConfigRepository {
         private readonly logger: ILogger,
         configDir?: string
     ) {
+        if (!configDir) {
+            console.warn(
+                `configDir is not provided . using configs/config.json`
+            );
+        }
+
         this.configPath = path.join(configDir || process.cwd(), 'config.json');
     }
 

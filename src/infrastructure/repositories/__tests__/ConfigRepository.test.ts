@@ -77,7 +77,7 @@ describe('ConfigRepository', () => {
             await repo.savePollInterval(2000);
 
             expect(MockedFs.writeFile).toHaveBeenCalledWith(
-                expect.stringContaining('config.json'),
+                expect.stringContaining('configs/config.json'),
                 JSON.stringify({ pollIntervalMs: 2000 }, null, 2),
                 'utf-8'
             );
