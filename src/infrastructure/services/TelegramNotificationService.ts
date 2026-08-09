@@ -1,5 +1,7 @@
 // src/infrastructure/services/TelegramNotificationService.ts
 
+import path from 'path';
+import fs from 'fs';
 import { Telegraf } from 'telegraf';
 import { Slot } from '../../domain/entities/Slot';
 import { SlotChange } from '../../domain/entities/SlotChange';
@@ -7,30 +9,30 @@ import {
     BookingRecord,
     IBookingPoolRepository,
 } from '../../application/ports/IBookingPoolRepository';
+import { ILocationTopicMapRepository } from '../../application/ports/ILocationTopicMapRepository';
 import { INotificationService } from '../../application/ports/INotificationService';
 import { ILogger } from '../../application/ports/ILogger';
-import path from 'path';
 
 export class TelegramNotificationService implements INotificationService {
     private readonly bot: Telegraf;
     private readonly isDevelopment: boolean;
     private readonly bookingPool: IBookingPoolRepository;
-    private readonly logFilePath?: string;
+    private readonly topicRepo?: ILocationTopicMapRepository;
+    private readonly logsDir?: string;
 
     constructor(
         botToken: string,
         private readonly fallbackChatId: string,
         private readonly logger: ILogger,
         bookingPool: IBookingPoolRepository,
-        private readonly logsDir?: string
+        logsDir?: string,
+        topicRepo?: ILocationTopicMapRepository
     ) {
-        this.logFilePath = process.env.BOT_TOKEN_DEV
-            ? undefined
-            : 'dev_messages.log';
-
         this.bot = new Telegraf(botToken);
         this.isDevelopment = process.env.NODE_ENV === 'development';
         this.bookingPool = bookingPool;
+        this.topicRepo = topicRepo;
+        this.logsDir = logsDir;
 
         // === ЛОГИРОВАНИЕ: регистрируем обработчики ===
         this.logger.info('[TelegramService] Registering bot actions...');
@@ -82,7 +84,6 @@ export class TelegramNotificationService implements INotificationService {
             });
 
             try {
-                // Получаем запись из пула
                 const record = await this.bookingPool.get(recordId);
                 if (!record) {
                     this.logger.warn(
@@ -93,7 +94,6 @@ export class TelegramNotificationService implements INotificationService {
                     return;
                 }
 
-                // Обновляем запись в пуле
                 await this.bookingPool.update(recordId, {
                     status: 'resolved',
                     resolution: action,
@@ -103,7 +103,6 @@ export class TelegramNotificationService implements INotificationService {
                 });
                 this.logger.info('[TelegramService] Confirm: pool updated');
 
-                // Редактируем сообщение в чате
                 const decisionText =
                     action === 'keep' ? 'оставить' : 'отменить';
                 await ctx.editMessageText(
@@ -112,7 +111,6 @@ export class TelegramNotificationService implements INotificationService {
                 );
                 this.logger.info('[TelegramService] Confirm: message edited');
 
-                // Открепляем сообщение после решения
                 try {
                     await this.bot.telegram.unpinChatMessage(
                         record.chatId,
@@ -153,7 +151,6 @@ export class TelegramNotificationService implements INotificationService {
                     return;
                 }
 
-                // Меняем кнопку «Обработать бронь» на «Оставить» и «Отменить»
                 await ctx.editMessageReplyMarkup({
                     inline_keyboard: [
                         [
@@ -188,14 +185,7 @@ export class TelegramNotificationService implements INotificationService {
         this.logger.info('[TelegramService] launch() called', {
             isDevelopment: this.isDevelopment,
         });
-
-        // if (this.isDevelopment) {
-        //     this.logger.info('[TelegramService] Skipping bot polling (development mode)');
-        //     return;
-        // }
-
         this.logger.info('[TelegramService] Starting bot polling...');
-        // Запускаем без await, чтобы не блокировать
         this.bot
             .launch()
             .then(() => {
@@ -211,45 +201,13 @@ export class TelegramNotificationService implements INotificationService {
             });
     }
 
-    async sendSystemMessage(options: {
-        message: string;
-        chatId?: string;
-    }): Promise<void> {
-        const targetChatId = options.chatId || this.fallbackChatId;
-        const text = `⚙️ ${options.message}`;
-
-        if (this.isDevelopment) {
-            if (options.chatId) {
-                await this.bot.telegram.sendMessage(targetChatId, text);
-            }
-
-            this.logger.info('Dev mode: system message not sent', {
-                chatId: targetChatId,
-                text,
-            });
-            return;
-        }
-
-        try {
-            await this.bot.telegram.sendMessage(targetChatId, text);
-            this.logger.info('System message sent to Telegram', {
-                chatId: targetChatId,
-            });
-        } catch (err) {
-            this.logger.error(
-                'Failed to send system message',
-                err instanceof Error ? err : new Error(String(err)),
-                { chatId: targetChatId }
-            );
-        }
-    }
-
     async sendNotification(options: {
         address: string;
         changes: SlotChange[];
         chatId: string;
+        locationId: number;
     }): Promise<void> {
-        const { address, changes, chatId } = options;
+        const { address, changes, chatId, locationId } = options;
         const targetChatId = chatId || this.fallbackChatId;
 
         if (!changes || changes.length === 0) return;
@@ -270,7 +228,15 @@ export class TelegramNotificationService implements INotificationService {
         });
 
         const text = lines.join('\n');
-        await this.send(targetChatId, text);
+        await this.sendToTopicOrChat(
+            targetChatId,
+            text,
+            locationId,
+            'changes',
+            {
+                parse_mode: 'Markdown' as const,
+            }
+        );
     }
 
     async sendSummary(options: {
@@ -278,8 +244,9 @@ export class TelegramNotificationService implements INotificationService {
         chatId: string;
         slots: Slot[];
         isFirstRun: boolean;
+        locationId: number;
     }): Promise<void> {
-        const { address, chatId, slots, isFirstRun } = options;
+        const { address, chatId, slots, isFirstRun, locationId } = options;
         const targetChatId = chatId || this.fallbackChatId;
 
         const freeByDate = new Map<string, string[]>();
@@ -311,12 +278,47 @@ export class TelegramNotificationService implements INotificationService {
         }
 
         const text = lines.join('\n');
-        await this.send(targetChatId, text);
+        await this.sendToTopicOrChat(
+            targetChatId,
+            text,
+            locationId,
+            'summary',
+            {
+                parse_mode: 'Markdown' as const,
+            }
+        );
     }
 
-    /**
-     * Отправляет сообщение о бронировании с кнопкой «Обработать бронь» и закрепляет его.
-     */
+    async sendSystemMessage(options: {
+        message: string;
+        chatId?: string;
+        locationId?: number;
+    }): Promise<void> {
+        const targetChatId = options.chatId || this.fallbackChatId;
+        const text = `⚙️ ${options.message}`;
+
+        if (this.isDevelopment) {
+            this.logger.info('Dev mode: system message not sent', {
+                chatId: targetChatId,
+                text,
+            });
+            return;
+        }
+
+        if (options.locationId) {
+            await this.sendToTopicOrChat(
+                targetChatId,
+                text,
+                options.locationId,
+                'system'
+            );
+        } else {
+            await this.bot.telegram.sendMessage(targetChatId, text, {
+                parse_mode: 'Markdown',
+            });
+        }
+    }
+
     async sendBookingResult(options: {
         address: string;
         chatId: string;
@@ -333,7 +335,6 @@ export class TelegramNotificationService implements INotificationService {
         });
 
         if (this.isDevelopment && !process.env.BOT_TOKEN_DEV) {
-            const fs = require('fs');
             const logFile = this.logsDir
                 ? path.join(
                       this.logsDir,
@@ -354,38 +355,45 @@ export class TelegramNotificationService implements INotificationService {
             return;
         }
 
+        const replyMarkup = {
+            inline_keyboard: [
+                [{ text: '⚙️ Обработать бронь', callback_data: callbackData }],
+            ],
+        };
+
         try {
-            const sent = await this.bot.telegram.sendMessage(
+            const sent = await this.sendToTopicOrChat(
                 targetChatId,
                 text,
-                {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: '⚙️ Обработать бронь',
-                                    callback_data: callbackData,
-                                },
-                            ],
-                        ],
-                    },
-                }
+                record.locationId,
+                'booking',
+                { reply_markup: replyMarkup }
             );
-            this.logger.info('[TelegramService] Booking message sent', {
-                messageId: sent.message_id,
-            });
 
-            try {
-                await this.bot.telegram.pinChatMessage(
-                    targetChatId,
-                    sent.message_id,
-                    { disable_notification: true }
-                );
-                this.logger.info('[TelegramService] Booking message pinned');
-            } catch (e) {
-                this.logger.warn('[TelegramService] Pin failed', {
-                    error: (e as Error).message,
-                });
+            // Закрепляем сообщение (если отправка вернула результат)
+            if (sent) {
+                try {
+                    const topicConfig = this.topicRepo?.getTopic(
+                        record.locationId,
+                        'booking'
+                    );
+                    const threadId = topicConfig?.threadId;
+                    await (this.bot.telegram as any).pinChatMessage(
+                        targetChatId,
+                        sent.message_id,
+                        {
+                            message_thread_id: threadId,
+                            disable_notification: true,
+                        }
+                    );
+                    this.logger.info(
+                        '[TelegramService] Booking message pinned'
+                    );
+                } catch (e) {
+                    this.logger.warn('[TelegramService] Pin failed', {
+                        error: (e as Error).message,
+                    });
+                }
             }
         } catch (e) {
             this.logger.error(
@@ -395,38 +403,76 @@ export class TelegramNotificationService implements INotificationService {
         }
     }
 
-    private async send(chatId: string, text: string): Promise<void> {
-        if (this.isDevelopment && !process.env.BOT_TOKEN_DEV) {
-            const fs = require('fs');
-            const logFile = this.logsDir
-                ? path.join(
-                      this.logsDir,
-                      process.env.TELEGRAM__DEFAULT_DEV_MESSAGE_LOG ||
-                          'dev_messages.log'
-                  )
-                : path.join(
-                      process.cwd(),
-                      'logs',
-                      process.env.TELEGRAM__DEFAULT_DEV_MESSAGE_LOG ||
-                          'dev_messages.log'
-                  );
-            const logLine = `[${new Date().toISOString()}] TO: ${chatId} | ${text}\n`;
-            fs.appendFileSync(logFile, logLine);
-            this.logger.info('Dev mode: message saved to file', { logFile });
-            return;
+    // ==============================
+    // Вспомогательные методы
+    // ==============================
+
+    /**
+     * Отправляет сообщение в топик (если есть) или в общий чат.
+     * При отсутствии топика пытается его создать.
+     * Возвращает результат sendMessage для дальнейшего использования (закрепление и т.п.).
+     */
+    private async sendToTopicOrChat(
+        chatId: string,
+        text: string,
+        locationId: number,
+        topicName: string,
+        options?: { parse_mode?: string; reply_markup?: any }
+    ): Promise<any> {
+        if (!this.topicRepo) {
+            return this.bot.telegram.sendMessage(chatId, text, {
+                ...options,
+                parse_mode: 'Markdown' as const,
+            });
         }
 
+        const topicConfig = this.topicRepo.getTopic(locationId, topicName);
+        let threadId = topicConfig?.threadId;
+
+        // 1-я попытка: отправить в существующий топик
+        if (threadId) {
+            try {
+                return await this.bot.telegram.sendMessage(chatId, text, {
+                    ...options,
+                    parse_mode: 'Markdown' as const,
+                    message_thread_id: threadId,
+                });
+            } catch (err: any) {
+                this.logger.warn(
+                    'Failed to send to topic, trying to recreate',
+                    {
+                        threadId,
+                        error: err.message,
+                    }
+                );
+                threadId = null;
+            }
+        }
+
+        // 2-я попытка: создать топик и отправить
         try {
-            await this.bot.telegram.sendMessage(chatId, text, {
-                parse_mode: 'Markdown',
-            });
-            this.logger.info('Message sent to Telegram', { chatId });
-        } catch (err) {
-            this.logger.error(
-                'Failed to send Telegram message',
-                err instanceof Error ? err : new Error(String(err)),
-                { chatId }
+            const { message_thread_id } =
+                await this.bot.telegram.createForumTopic(chatId, topicName);
+            threadId = message_thread_id;
+            await this.topicRepo.updateThreadId(
+                locationId,
+                topicName,
+                threadId
             );
+            return await this.bot.telegram.sendMessage(chatId, text, {
+                ...options,
+                parse_mode: 'Markdown' as const,
+                message_thread_id: threadId,
+            });
+        } catch (err: any) {
+            this.logger.error(
+                `Failed to create topic ${topicName}, sending to main chat`,
+                err
+            );
+            return this.bot.telegram.sendMessage(chatId, text, {
+                ...options,
+                parse_mode: 'Markdown' as const,
+            });
         }
     }
 }

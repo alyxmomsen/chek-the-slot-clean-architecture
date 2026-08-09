@@ -129,15 +129,15 @@ export class MonitorSlotsUseCase {
                             'First run for location, sending summary',
                             { name: location.name }
                         );
+
                         await this.notificationService.sendSummary({
                             address: location.name,
-                            chatId:
-                                config.nodeEnv === 'development'
-                                    ? config.devChatId || config.fallbackChatId
-                                    : location.chatId,
+                            chatId: location.chatId,
                             slots: currentSlots,
                             isFirstRun: true,
+                            locationId: location.id,
                         });
+
                         await this.snapshotRepo.save({
                             locationId: location.id,
                             locationName: location.name,
@@ -164,6 +164,7 @@ export class MonitorSlotsUseCase {
                             name: location.name,
                             checkedAt: oldSnapshot.checkedAt,
                         });
+
                         await this.notificationService.sendSummary({
                             address: location.name,
                             chatId:
@@ -171,8 +172,10 @@ export class MonitorSlotsUseCase {
                                     ? config.devChatId || config.fallbackChatId
                                     : location.chatId,
                             slots: currentSlots,
-                            isFirstRun: false,
+                            isFirstRun: true,
+                            locationId: location.id,
                         });
+
                         await this.snapshotRepo.save({
                             locationId: location.id,
                             locationName: location.name,
@@ -199,6 +202,7 @@ export class MonitorSlotsUseCase {
                             name: location.name,
                             count: changes.length,
                         });
+
                         await this.notificationService.sendNotification({
                             address: location.name,
                             chatId:
@@ -206,7 +210,9 @@ export class MonitorSlotsUseCase {
                                     ? config.devChatId || config.fallbackChatId
                                     : location.chatId,
                             changes: changes,
+                            locationId: location.id,
                         });
+
                         await this.snapshotRepo.save({
                             locationId: location.id,
                             locationName: location.name,

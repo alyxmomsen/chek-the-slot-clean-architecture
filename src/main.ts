@@ -13,6 +13,7 @@ import { ConfigRepository } from './infrastructure/repositories/ConfigRepository
 import { FileBookingPoolRepository } from './infrastructure/repositories/FileBookingPoolRepository';
 import { createServer } from './presentation/server';
 import { FileIntervalScheduleRepository } from './infrastructure/repositories/FileIntervalScheduleRepository';
+import { FileLocationTopicMapRepository } from './infrastructure/repositories/FileLocationTopicMapRepository';
 
 (async () => {
     // 1. Логгер
@@ -54,18 +55,25 @@ import { FileIntervalScheduleRepository } from './infrastructure/repositories/Fi
 
     const scheduleRepo = new FileIntervalScheduleRepository(logger, config.configsRootDir);
 
+
+    
+
     const telegramToken =
         config.nodeEnv === 'development' && config.botTokenDev
             ? config.botTokenDev
             : config.botToken;
 
     // Сервис уведомлений (теперь с доступом к пулу бронирований)
+    const topicRepo = new FileLocationTopicMapRepository(logger, config.configsRootDir);
+    await topicRepo.load(); // загружаем маппинг топиков
+
     const notificationService = new TelegramNotificationService(
         telegramToken,
         config.fallbackChatId,
         logger,
         bookingPoolRepo,
         config.logsRootDir,
+        topicRepo 
     );
 
     const eventBus = new EventBus();

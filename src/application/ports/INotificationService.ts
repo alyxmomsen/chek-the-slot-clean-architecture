@@ -6,6 +6,7 @@ export interface INotificationService {
         address: string;
         changes: SlotChange[];
         chatId: string;
+        locationId: number; // <- добавлено
     }): Promise<void>;
 
     sendSummary(options: {
@@ -13,10 +14,12 @@ export interface INotificationService {
         chatId: string;
         slots: Slot[];
         isFirstRun: boolean;
+        locationId: number; // <- добавлено
     }): Promise<void>;
 
     sendSystemMessage(options: {
         message: string;
-        chatId?: string; // если не указан, используется fallback-чат
+        chatId?: string;
+        locationId?: number; // <- добавлено (опционально, для гибкости)
     }): Promise<void>;
 }
