@@ -9,3 +9,5 @@ nohup.out
 bookings/
 dev_messages.log
 schedule.json
+configs/
+data/
