@@ -10,6 +10,7 @@ import { CompareSnapshotsUseCase } from './CompareSnapshotsUseCase';
 import { GenerateSummaryUseCase } from './GenerateSummaryUseCase';
 import { DetectStalenessUseCase } from './DetectStalenessUseCase';
 import { config } from '../../config/env';
+import { Snapshot } from '../../domain/entities/Snapshot';
 
 export interface MonitoredLocation {
     readonly id: number;
@@ -29,6 +30,7 @@ export class MonitorSlotsUseCase {
     private readonly summaryUseCase: GenerateSummaryUseCase;
     private readonly stalenessUseCase: DetectStalenessUseCase;
     private currentPollInterval: number;
+    private lastHourlySummaryAt: number = 0;
 
     constructor(
         private readonly apiService: ISlotApiService,
@@ -85,6 +87,7 @@ export class MonitorSlotsUseCase {
         }
 
         let iterationId = 0;
+        const HOURLY_INTERVAL_MS = 60 * 60 * 1000;
 
         while (true) {
             // Проверяем активный интервал перед каждой итерацией
@@ -110,6 +113,9 @@ export class MonitorSlotsUseCase {
             try {
                 const allSlots = await this.apiService.fetchSlots();
 
+                const shouldSendHourlySummary = Date.now() - this.lastHourlySummaryAt >= HOURLY_INTERVAL_MS;
+
+
                 for (const location of this.config.locations) {
                     const currentSlots = allSlots.get(location.id);
                     if (!currentSlots) {
@@ -118,6 +124,10 @@ export class MonitorSlotsUseCase {
                             name: location.name,
                         });
                         continue;
+                    }
+
+                    if (shouldSendHourlySummary) {
+                        await this.sendHourlySummary(location, currentSlots);
                     }
 
                     const oldSnapshot = await this.snapshotRepo.load(
@@ -229,6 +239,11 @@ export class MonitorSlotsUseCase {
                         });
                     }
                 }
+
+                if (shouldSendHourlySummary) {
+                    this.lastHourlySummaryAt = Date.now();
+                }
+
             } catch (err) {
                 this.logger.error(
                     'Cycle error',
@@ -243,6 +258,37 @@ export class MonitorSlotsUseCase {
             const jitter = Math.floor(Math.random() * 200);
             const sleepTime = Math.max(0, this.currentPollInterval - elapsed);
             await new Promise((r) => setTimeout(r, sleepTime + jitter));
+        }
+    }
+
+    private async sendHourlySummary(location: MonitoredLocation, currentSlots: Slot[]): Promise<void> {
+        this.logger.info('Sending hourly summary', { name: location.name });
+
+        try {
+            await this.notificationService.sendSummary({
+                address: location.name,
+                chatId: config.nodeEnv === 'development'
+                    ? config.devChatId || config.fallbackChatId
+                    : location.chatId,
+                slots: currentSlots,
+                isFirstRun: false,
+                // locationId: location.id,   // если топики используются
+            });
+
+            await this.snapshotRepo.save({
+                locationId: location.id,
+                locationName: location.name,
+                checkedAt: new Date().toISOString(),
+                slots: currentSlots,
+            });
+
+            this.eventBus.emit('slots:summary', {
+                locationName: location.name,
+                slots: currentSlots,
+                isFirstRun: false,
+            });
+        } catch (err) {
+            this.logger.error('Failed to send hourly summary', err instanceof Error ? err : new Error(String(err)));
         }
     }
 }
