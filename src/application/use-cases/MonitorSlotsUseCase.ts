@@ -153,40 +153,40 @@ export class MonitorSlotsUseCase {
                         continue;
                     }
 
-                    const isStale = this.stalenessUseCase.execute(
-                        oldSnapshot.checkedAt,
-                        this.currentPollInterval,
-                        this.config.staleToleranceMs
-                    );
+                    // const isStale = this.stalenessUseCase.execute(
+                    //     oldSnapshot.checkedAt,
+                    //     this.currentPollInterval,
+                    //     this.config.staleToleranceMs
+                    // );
 
-                    if (isStale) {
-                        this.logger.info('Data is stale, sending summary', {
-                            name: location.name,
-                            checkedAt: oldSnapshot.checkedAt,
-                        });
-                        await this.notificationService.sendSummary({
-                            address: location.name,
-                            chatId:
-                                config.nodeEnv === 'development'
-                                    ? config.devChatId || config.fallbackChatId
-                                    : location.chatId,
-                            slots: currentSlots,
-                            isFirstRun: false,
-                        });
-                        await this.snapshotRepo.save({
-                            locationId: location.id,
-                            locationName: location.name,
-                            checkedAt: new Date().toISOString(),
-                            slots: currentSlots,
-                        });
+                    // if (isStale) {
+                    //     this.logger.info('Data is stale, sending summary', {
+                    //         name: location.name,
+                    //         checkedAt: oldSnapshot.checkedAt,
+                    //     });
+                    //     await this.notificationService.sendSummary({
+                    //         address: location.name,
+                    //         chatId:
+                    //             config.nodeEnv === 'development'
+                    //                 ? config.devChatId || config.fallbackChatId
+                    //                 : location.chatId,
+                    //         slots: currentSlots,
+                    //         isFirstRun: false,
+                    //     });
+                    //     await this.snapshotRepo.save({
+                    //         locationId: location.id,
+                    //         locationName: location.name,
+                    //         checkedAt: new Date().toISOString(),
+                    //         slots: currentSlots,
+                    //     });
 
-                        this.eventBus.emit('slots:summary', {
-                            locationName: location.name,
-                            slots: currentSlots,
-                            isFirstRun: false,
-                        });
-                        continue;
-                    }
+                    //     this.eventBus.emit('slots:summary', {
+                    //         locationName: location.name,
+                    //         slots: currentSlots,
+                    //         isFirstRun: false,
+                    //     });
+                    //     continue;
+                    // }
 
                     const changes: SlotChange[] =
                         await this.compareUseCase.execute(
