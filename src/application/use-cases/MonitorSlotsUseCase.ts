@@ -287,6 +287,7 @@ export class MonitorSlotsUseCase {
                 slots: currentSlots,
                 isFirstRun: false,
             });
+            
         } catch (err) {
             this.logger.error('Failed to send hourly summary', err instanceof Error ? err : new Error(String(err)));
         }
