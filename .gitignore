@@ -10,4 +10,4 @@ bookings/
 dev_messages.log
 schedule.json
 configs/
-data/
+data/replacements.txt
